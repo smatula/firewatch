@@ -42,9 +42,15 @@ class Report:
         """
         self.logger = get_logger(__name__)
 
-        # If job is a rehearsal, exit 0
+        # If job is a rehearsal
         if job.is_rehearsal:
-            exit(0)
+            if firewatch_config.fail_with_test_failures and job.has_test_failures:
+                self.logger.info(
+                    "Test failures found and --fail-with-test-failures flag is set. Exiting with exit code 1",
+                )
+                exit(1)
+            else:
+                exit(0)
 
         # If job has failures, file bugs
         if job.has_failures:
