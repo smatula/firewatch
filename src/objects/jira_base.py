@@ -63,6 +63,8 @@ class Jira:
         description: str,
         issue_type: str,
         component: Optional[list[str]] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
         epic: Optional[str] = None,
         file_attachments: Optional[list[str]] = None,
         labels: Optional[list[Optional[str]]] = None,
@@ -113,6 +115,13 @@ class Jira:
             # MyPy spits out an odd error here unless ignored.
             issue_dict.update({"components": components})  # type: ignore
 
+        if start_date:
+            issue_dict.update({"customfield_12313941": start_date}) # type: ignore
+
+        if end_date:
+            issue_dict.update({"customfield_12313942": end_date}) # type: ignore
+ 
+
         if affects_version:
             issue_dict.update({"versions": [{"name": affects_version}]})  # type: ignore
 
@@ -130,7 +139,16 @@ class Jira:
         self.logger.info(
             "A Jira issue will be reported.",
         )
+
         issue = self.connection.create_issue(issue_dict)
+
+        #all_the_fields = self.connection.fields()
+        #for i in all_the_fields:
+        #    for xx in issue.raw['fields']:
+        #        if i["id"] == xx:
+        #            print(i)
+
+
         self.logger.info(
             f"{issue} has been reported to Jira: {self.url}/browse/{issue}",
         )

@@ -16,7 +16,7 @@
 #
 import os
 import shutil
-from datetime import datetime
+from datetime import datetime, timedelta, date
 from typing import Any
 from typing import Optional
 
@@ -64,6 +64,10 @@ class Report:
                 firewatch_config=firewatch_config,
                 job=job,
             )
+            # Report failure story
+            failure_story_key = self.report_failure(job=job, firewatch_config=firewatch_config)
+            bugs_filed.append(failure_story_key)
+
             if len(bugs_filed) > 1:
                 self.relate_issues(issues=bugs_filed, jira=firewatch_config.jira)
         else:
@@ -250,6 +254,53 @@ class Report:
 
         return bugs_filed
 
+    def report_failure(self, job: Job, firewatch_config: Configuration) -> None:
+        """
+        Reports a failure story to Jira in the default Jira project and the default Jira epic.
+        Args:
+            firewatch_config (Configuration): A valid firewatch Configuration object.
+            job (Job): A valid Job object representing the prow job to be reported on.
+        Returns:
+            None
+        """
+        start_date, end_date, week_num = self._get_date_data(0)
+
+        self.logger.info(f"Reporting job {job.name} failure.")
+        date = datetime.now()
+
+        labels = self._get_issue_labels(
+            job_name=job.name,
+            type="failure",
+            jira_additional_labels=["!default", week_num],  # type: ignore
+        )
+
+        #remove_run_label(jira=firewatch_config.jira,
+        #              issue_id=bug,
+        #              run_label=week_number)
+
+        jira_issue = firewatch_config.jira.create_issue(
+            project=rule.jira_project,
+            summary=f"Job {job.name} failed - {date.strftime('%m-%d-%Y')}",
+            description=self._get_issue_description(
+                job_name=job.name,  # type: ignore
+                build_id=job.build_id,  # type: ignore
+                success_issue=False,
+            ),
+            issue_type="Story",
+            epic=rule.jira_epic,
+            labels=labels,
+            component=rule.jira_component,
+            affects_version=rule.jira_affects_version,
+            start_date=start_date,
+            end_date=end_date,
+            assignee=rule.jira_assignee,
+            priority=rule.jira_priority,
+            security_level=rule.jira_security_level,
+            close_issue=True,
+        )
+
+        return jira_issue.key
+
     def report_success(self, job: Job, firewatch_config: Configuration) -> None:
         """
         Reports a success story to Jira in the default Jira project and the default Jira epic.
@@ -261,12 +312,17 @@ class Report:
         """
         self.logger.info(f"Reporting job {job.name} success.")
         date = datetime.now()
+
+        start_date, end_date, week_num = self._get_date_data(0)
+
         for rule in firewatch_config.success_rules if firewatch_config.success_rules else []:
             labels = self._get_issue_labels(
                 job_name=job.name,
                 type="success",
                 jira_additional_labels=rule.jira_additional_labels,  # type: ignore
             )
+
+            labels.extend([week_num])
 
             firewatch_config.jira.create_issue(
                 project=rule.jira_project,
@@ -280,6 +336,10 @@ class Report:
                 epic=rule.jira_epic,
                 labels=labels,
                 component=rule.jira_component,
+                start_date=start_date,
+                end_date=end_date,
+                #customfield_10022=start_date,
+                #customfield_10901=end_date,
                 affects_version=rule.jira_affects_version,
                 assignee=rule.jira_assignee,
                 priority=rule.jira_priority,
@@ -403,6 +463,22 @@ class Report:
         jira.add_labels_to_issue(
             issue_id_or_key=issue_id,
             labels=[JOB_PASSED_SINCE_TICKET_CREATED_LABEL],
+        )
+
+    def add_run_label(self, jira: Jira, issue_id: str, run_label: str) -> None:
+        """
+        Used to add a run label on latest pass or fail Jira story.
+
+        Args:
+            jira (Jira): Jira object.
+            issue_id (str): Issue ID of the open issue to comment on.
+
+        Returns:
+            None
+        """
+        jira.add_labels_to_issue(
+            issue_id_or_key=issue_id,
+            labels=[run_label],
         )
 
     def add_duplicate_comment(
@@ -737,3 +813,27 @@ class Report:
             table += row
 
         return table
+
+    def _get_date_data(self, day_delta: int):
+        """
+        """
+        # Get today's Date
+        today = date.today()
+
+        # Start run date is beginning of week plus offset
+        start_day = today - timedelta(days=today.weekday()+1-day_delta)
+
+        # If Today is before run start day then its previous week
+        if today < start_day:
+            start_day = start_day - timedelta(days=7)
+
+        # End of run day is start + 6
+        end_day = start_day + timedelta(days=6)
+
+        # Calc Week of year. Will be used as run label
+        week_num = start_day.strftime("w%V")
+
+        start_date = start_day.strftime("%Y-%m-%d")
+        end_date = end_day.strftime("%Y-%m-%d")
+
+        return start_date, end_date, week_num
