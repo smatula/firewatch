@@ -58,19 +58,21 @@ class Report:
                 exit(0)
 
         # If job has failures, file bugs
+        bugs_filed = None
         if job.has_failures:
             bugs_filed = self.file_jira_issues(
                 failures=job.failures,  # type: ignore
                 firewatch_config=firewatch_config,
                 job=job,
             )
+            
             # Report failure story
             failure_story_key = self.report_failure(job=job, firewatch_config=firewatch_config)
             bugs_filed.append(failure_story_key)
 
             if len(bugs_filed) > 1:
                 self.relate_issues(issues=bugs_filed, jira=firewatch_config.jira)
-        else:
+        if bugs_filed is None OR len(bugs_filed) > 0:
             self.logger.info(f"No failures for {job.name} #{job.build_id} were found!")
 
             # Report success
